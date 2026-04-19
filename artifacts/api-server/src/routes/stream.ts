@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { request as undiciRequest } from "undici";
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -9,7 +10,6 @@ const ALLOWED_HOSTS = [
   "youtube.com",
   "ytimg.com",
   "yt3.ggpht.com",
-  "r1---sn",
 ];
 
 function isAllowedUrl(raw: string): boolean {
@@ -28,9 +28,9 @@ function isAllowedUrl(raw: string): boolean {
  * GET /api/stream?url=<encoded_cdn_url>
  *
  * Proxies a YouTube CDN stream through the server so the browser can play it.
- * CDN URLs are IP-locked to the machine that ran yt-dlp; browsers can't access
- * them directly. This endpoint re-fetches from the server's IP and forwards
- * the byte stream, including Range request support for seeking.
+ * CDN URLs are IP-locked to the machine that ran yt-dlp; browsers can't use
+ * them directly. This endpoint fetches from the same server IP and pipes bytes
+ * to the browser, including Range request forwarding so seeking works.
  */
 router.get("/stream", async (req: Request, res: Response) => {
   const raw = req.query["url"];
@@ -53,30 +53,28 @@ router.get("/stream", async (req: Request, res: Response) => {
     return;
   }
 
-  const upstreamHeaders: Record<string, string> = {
+  const fetchHeaders: HeadersInit = {
     "User-Agent":
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "*/*",
     "Accept-Language": "en-US,en;q=0.9",
-    "Connection": "keep-alive",
   };
 
-  // Forward Range header so seeking works
+  // Forward Range header so the browser can seek within the video
   const rangeHeader = req.headers["range"];
   if (rangeHeader) {
-    upstreamHeaders["Range"] = rangeHeader;
+    (fetchHeaders as Record<string, string>)["Range"] = rangeHeader;
   }
 
   try {
-    const upstream = await undiciRequest(targetUrl, {
+    // Use global fetch (Node 18+) — follows redirects automatically
+    const upstream = await fetch(targetUrl, {
       method: "GET",
-      headers: upstreamHeaders,
-      maxRedirections: 5,
+      headers: fetchHeaders,
+      redirect: "follow",
     });
 
-    const status = upstream.statusCode;
-
-    // Forward key headers the browser needs for video playback
+    // Forward the key headers the browser needs for video playback
     const forward = [
       "content-type",
       "content-length",
@@ -85,19 +83,27 @@ router.get("/stream", async (req: Request, res: Response) => {
       "cache-control",
     ];
     for (const h of forward) {
-      const val = upstream.headers[h];
+      const val = upstream.headers.get(h);
       if (val) res.setHeader(h, val);
     }
 
-    // Allow browser to use this stream
     res.setHeader("Access-Control-Allow-Origin", "*");
+    res.status(upstream.status);
 
-    res.status(status);
-    upstream.body.pipe(res);
+    if (!upstream.body) {
+      res.end();
+      return;
+    }
 
-    upstream.body.on("error", (err) => {
-      logger.warn({ err }, "Stream body error");
-      if (!res.headersSent) res.status(500).end();
+    // Pipe the Web ReadableStream to Express response
+    const nodeStream = Readable.fromWeb(
+      upstream.body as import("stream/web").ReadableStream<Uint8Array>
+    );
+
+    await pipeline(nodeStream, res).catch((err) => {
+      if ((err as NodeJS.ErrnoException).code !== "ERR_STREAM_DESTROYED") {
+        logger.warn({ err }, "Stream pipeline error");
+      }
     });
   } catch (err) {
     logger.error({ err, targetUrl }, "Stream proxy error");
