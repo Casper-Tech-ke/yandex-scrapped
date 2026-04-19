@@ -15,8 +15,7 @@ const BROWSER_HEADERS: Record<string, string> = {
 
 export interface ImageResult {
   title: string;
-  origUrl: string;
-  thumb: string;
+  url: string;
   width: number | null;
   height: number | null;
   domain: string;
@@ -74,16 +73,12 @@ function parseYandexHtml(html: string, debug?: string[]): ImageResult[] {
 
       for (const key of items.keys) {
         const e: SerpEntity = items.entities[key] || {};
-        const origUrl =
-          e.origUrl ||
-          e.viewerData?.preview?.[0]?.url ||
-          absoluteUrl(e.image);
-        if (!origUrl) continue;
+        const cdnUrl = absoluteUrl(e.image);
+        if (!cdnUrl) continue;
 
         results.push({
           title: e.snippet?.title || e.alt || "",
-          origUrl: absoluteUrl(origUrl),
-          thumb: absoluteUrl(e.image),
+          url: cdnUrl,
           width: e.origWidth || e.width || null,
           height: e.origHeight || e.height || null,
           domain: e.snippet?.domain || "",
@@ -192,8 +187,8 @@ router.get("/scrape/images", async (req: Request, res: Response) => {
 function deduplicateImages(images: ImageResult[]): ImageResult[] {
   const seen = new Set<string>();
   return images.filter((img) => {
-    if (seen.has(img.origUrl)) return false;
-    seen.add(img.origUrl);
+    if (seen.has(img.url)) return false;
+    seen.add(img.url);
     return true;
   });
 }
