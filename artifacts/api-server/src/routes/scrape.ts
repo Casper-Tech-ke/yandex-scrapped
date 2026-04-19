@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import * as cheerio from "cheerio";
 import { proxyManager } from "../lib/proxyManager";
+import { resolveYouTubeVideo } from "../lib/videoResolver";
 
 const router: IRouter = Router();
 
@@ -474,6 +475,26 @@ router.get("/scrape/videos/debug", async (req: Request, res: Response) => {
     res.status(500).json({
       error: err instanceof Error ? err.message : String(err),
       proxyStats: proxyManager.getStats(),
+    });
+  }
+});
+
+router.get("/scrape/resolve", async (req: Request, res: Response) => {
+  const url = (req.query.url as string) || "";
+  if (!url.trim()) {
+    res.status(400).json({ error: "Missing required query param: url (YouTube URL or video ID)" });
+    return;
+  }
+
+  req.log.info({ url }, "Resolving video stream URLs");
+
+  try {
+    const result = await resolveYouTubeVideo(url);
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "Video resolve failed");
+    res.status(500).json({
+      error: err instanceof Error ? err.message : String(err),
     });
   }
 });
