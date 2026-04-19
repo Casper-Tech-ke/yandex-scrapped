@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { proxyManager } from "./lib/proxyManager";
 
 const rawPort = process.env["PORT"];
 
@@ -22,4 +23,10 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  proxyManager.validateProxies().then(() => {
+    logger.info(proxyManager.getStats(), "Proxy pool ready");
+  }).catch((e) => {
+    logger.warn({ err: e }, "Proxy pool warm-up failed");
+  });
 });
