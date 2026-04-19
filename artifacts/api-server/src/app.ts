@@ -1,10 +1,17 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
+const BRANDING = {
+  provider: "CASPER TECH DEVS",
+  creator: "TRABY CASPER",
+};
+
 const app: Express = express();
+
+app.set("json spaces", 2);
 
 app.use(
   pinoHttp({
@@ -28,6 +35,18 @@ app.use(
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Inject branding into every JSON response
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  const originalJson = res.json.bind(res);
+  res.json = function (body: unknown) {
+    if (body !== null && typeof body === "object" && !Array.isArray(body)) {
+      body = { ...BRANDING, ...(body as Record<string, unknown>) };
+    }
+    return originalJson(body);
+  };
+  next();
+});
 
 app.use("/api", router);
 
