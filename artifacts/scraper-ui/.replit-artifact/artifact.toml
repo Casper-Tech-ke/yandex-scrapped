@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/scraper-ui/"
+title = "CASPER TECH DEVS — Image & Video Scraper"
+version = "1.0.0"
+id = "artifacts/scraper-ui"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/scraper-ui/" ]
+localPort = 22742
+
+[services.development]
+run = "pnpm --filter @workspace/scraper-ui run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/scraper-ui", "run", "build" ]
+publicDir = "artifacts/scraper-ui/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22742"
+BASE_PATH = "/scraper-ui/"

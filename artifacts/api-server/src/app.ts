@@ -1,6 +1,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import { createProxyMiddleware } from "http-proxy-middleware";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
@@ -49,5 +50,25 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
 });
 
 app.use("/api", router);
+
+// In development, proxy the scraper-ui Vite dev server through the api-server.
+// This lets the frontend be reachable at /scraper-ui/ via the main port (8080 → 80).
+if (process.env.NODE_ENV === "development") {
+  const VITE_PORT = 22742;
+  const viteProxy = createProxyMiddleware({
+    target: `http://localhost:${VITE_PORT}`,
+    changeOrigin: true,
+    ws: true,
+    on: {
+      error: (_err, _req, res) => {
+        if (res && "writeHead" in res && typeof res.writeHead === "function") {
+          (res as Response).writeHead(502, { "Content-Type": "text/plain" });
+          (res as Response).end("Frontend dev server starting…");
+        }
+      },
+    },
+  });
+  app.use("/scraper-ui", viteProxy);
+}
 
 export default app;
