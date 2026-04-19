@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download, Youtube, AlertCircle } from "lucide-react";
-import { VideoResult } from "@/lib/api";
+import { VideoResult, proxyStreamUrl } from "@/lib/api";
 
 interface VideoPlayerModalProps {
   video: VideoResult | null;
@@ -15,12 +15,16 @@ export function VideoPlayerModal({ video, open, onClose }: VideoPlayerModalProps
   const [quality, setQuality] = useState<"best" | "medium">("best");
   const [error, setError] = useState(false);
 
-  const streamUrl =
+  const rawStreamUrl =
     video?.streamUrls
       ? quality === "best"
         ? video.streamUrls.best
         : video.streamUrls.medium
       : null;
+
+  // Proxy through the api-server so the request comes from the same IP
+  // that yt-dlp used (CDN URLs are IP-locked and can't be used by the browser directly)
+  const streamUrl = rawStreamUrl ? proxyStreamUrl(rawStreamUrl) : null;
 
   useEffect(() => {
     if (!open) {

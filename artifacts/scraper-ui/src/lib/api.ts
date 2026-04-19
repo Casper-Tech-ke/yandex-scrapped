@@ -1,5 +1,14 @@
 const BASE = "/api";
 
+/**
+ * Wraps a raw CDN stream URL in the server-side stream proxy.
+ * CDN URLs are IP-locked; the browser can't use them directly.
+ * The server fetches and pipes them instead.
+ */
+export function proxyStreamUrl(cdnUrl: string): string {
+  return `${BASE}/stream?url=${encodeURIComponent(cdnUrl)}`;
+}
+
 export interface ImageResult {
   title: string;
   url: string;
