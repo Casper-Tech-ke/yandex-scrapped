@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import * as cheerio from "cheerio";
 import { proxyManager } from "../lib/proxyManager";
-import { resolveYouTubeVideo } from "../lib/videoResolver";
+import { resolveYouTubeVideo, resolveStreamUrlsSafe, isYouTubeUrl } from "../lib/videoResolver";
 
 const router: IRouter = Router();
 
@@ -276,6 +276,7 @@ export interface VideoResult {
   description: string;
   width: number | null;
   height: number | null;
+  streamUrls: { best: string; medium: string } | null;
 }
 
 interface VideoClip {
@@ -346,6 +347,7 @@ function parseYandexVideoHtml(html: string, debug?: string[]): VideoResult[] {
         description: clip.description ?? "",
         width: clip.cwidth ?? null,
         height: clip.cheight ?? null,
+        streamUrls: null,
       });
     }
   } catch (err) {
@@ -368,6 +370,27 @@ async function fetchVideoPage(
 
 const MAX_VIDEOS = 200;
 const MAX_PARALLEL_VIDEO_PAGES = 3;
+const MAX_PARALLEL_RESOLVE = 6;
+
+async function enrichWithStreamUrls(videos: VideoResult[]): Promise<VideoResult[]> {
+  const results: VideoResult[] = new Array(videos.length);
+
+  // Process in batches to avoid spawning too many processes at once
+  for (let i = 0; i < videos.length; i += MAX_PARALLEL_RESOLVE) {
+    const batch = videos.slice(i, i + MAX_PARALLEL_RESOLVE);
+    const resolved = await Promise.all(
+      batch.map(async (v, j) => {
+        if (!isYouTubeUrl(v.url)) return { ...v };
+        const streamUrls = await resolveStreamUrlsSafe(v.url);
+        return { ...v, streamUrls };
+      })
+    );
+    for (let j = 0; j < resolved.length; j++) {
+      results[i + j] = resolved[j];
+    }
+  }
+  return results;
+}
 
 router.get("/scrape/videos", async (req: Request, res: Response) => {
   const text = (req.query.text as string) || "";
@@ -386,12 +409,13 @@ router.get("/scrape/videos", async (req: Request, res: Response) => {
 
   try {
     if (requestedCount <= 17) {
-      const videos = await fetchVideoPage(text, page);
+      const raw = await fetchVideoPage(text, page);
+      const videos = await enrichWithStreamUrls(raw.slice(0, requestedCount));
       res.json({
         query: text,
         page,
         count: videos.length,
-        videos: videos.slice(0, requestedCount),
+        videos,
       });
       return;
     }
@@ -426,13 +450,15 @@ router.get("/scrape/videos", async (req: Request, res: Response) => {
     }
 
     const seenIds = new Set<string>();
-    const unique = allVideos
+    const deduped = allVideos
       .filter((v) => {
         if (seenIds.has(v.videoId)) return false;
         seenIds.add(v.videoId);
         return true;
       })
       .slice(0, requestedCount);
+
+    const unique = await enrichWithStreamUrls(deduped);
 
     res.json({
       query: text,

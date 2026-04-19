@@ -6,7 +6,7 @@ const execFileAsync = promisify(execFile);
 
 const YTDLP_PATH = "/home/runner/yt-dlp";
 const PYTHON_PATH = "/home/runner/.nix-profile/bin/python3.10";
-const TIMEOUT_MS = 30_000;
+const TIMEOUT_MS = 25_000;
 
 export interface StreamFormat {
   formatId: string;
@@ -22,28 +22,33 @@ export interface StreamFormat {
   url: string;
 }
 
+export interface StreamUrls {
+  best: string;
+  medium: string;
+}
+
 export interface ResolvedVideo {
   videoId: string;
   title: string;
   duration: number | null;
   thumbnail: string;
+  streamUrls: StreamUrls;
   formats: StreamFormat[];
-  best: {
-    videoAndAudio: StreamFormat | null;
-    video720p: StreamFormat | null;
-    audioOnly: StreamFormat | null;
-  };
 }
 
 function normalizeYouTubeUrl(input: string): string {
-  // Accept bare video ID, youtu.be/, or full URL
   if (/^[a-zA-Z0-9_-]{11}$/.test(input)) {
     return `https://www.youtube.com/watch?v=${input}`;
   }
-  if (input.startsWith("youtu.be/")) {
-    return `https://www.youtube.com/${input}`;
-  }
   return input;
+}
+
+export function isYouTubeUrl(url: string): boolean {
+  return (
+    url.includes("youtube.com/watch") ||
+    url.includes("youtu.be/") ||
+    url.includes("youtube.com/shorts/")
+  );
 }
 
 export async function resolveYouTubeVideo(
@@ -92,12 +97,7 @@ export async function resolveYouTubeVideo(
       const hasVideo = f.vcodec && f.vcodec !== "none";
       const hasAudio = f.acodec && f.acodec !== "none";
       const type: StreamFormat["type"] =
-        hasVideo && hasAudio
-          ? "video+audio"
-          : hasVideo
-          ? "video"
-          : "audio";
-
+        hasVideo && hasAudio ? "video+audio" : hasVideo ? "video" : "audio";
       return {
         formatId: f.format_id,
         quality: f.format_note ?? "",
@@ -114,36 +114,42 @@ export async function resolveYouTubeVideo(
     });
 
   const combined = formats.filter((f) => f.type === "video+audio");
-  const videoOnly = formats.filter((f) => f.type === "video");
-  const audioOnly = formats.filter((f) => f.type === "audio");
+  const videoOnly = formats
+    .filter((f) => f.type === "video" && f.ext === "mp4")
+    .sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
 
-  const video720 =
-    videoOnly.find(
-      (f) => f.height === 720 && f.ext === "mp4"
-    ) ??
-    videoOnly.find((f) => f.height === 720) ??
-    null;
+  // best = highest quality mp4 video (720p or best available), preferring combined if ≥720p
+  const bestCombined720 = combined.find((f) => (f.height ?? 0) >= 720 && f.ext === "mp4");
+  const bestVideo = bestCombined720 ?? videoOnly[0] ?? combined[0] ?? formats[0];
 
-  const bestCombined =
-    combined.find((f) => f.ext === "mp4") ?? combined[0] ?? null;
-
-  const bestAudio =
-    audioOnly.find((f) => f.ext === "m4a" && f.quality === "medium") ??
-    audioOnly.find((f) => f.ext === "m4a") ??
-    audioOnly.find((f) => f.quality === "medium") ??
-    audioOnly[0] ??
-    null;
+  // medium = 360p combined mp4, or next best combined, or lower video-only
+  const medium360Combined = combined.find((f) => f.height === 360 && f.ext === "mp4");
+  const anyMediumCombined = combined.find((f) => (f.height ?? 0) <= 480 && f.ext === "mp4") ?? combined[0];
+  const medium480Video = videoOnly.find((f) => f.height === 480);
+  const medium360Video = videoOnly.find((f) => f.height === 360);
+  const mediumVideo = medium360Combined ?? anyMediumCombined ?? medium480Video ?? medium360Video ?? bestVideo;
 
   return {
     videoId: data.id,
     title: data.title,
     duration: data.duration ?? null,
     thumbnail: data.thumbnail ?? "",
-    formats,
-    best: {
-      videoAndAudio: bestCombined,
-      video720p: video720,
-      audioOnly: bestAudio,
+    streamUrls: {
+      best: bestVideo?.url ?? "",
+      medium: mediumVideo?.url ?? "",
     },
+    formats,
   };
+}
+
+export async function resolveStreamUrlsSafe(
+  youtubeUrl: string
+): Promise<StreamUrls | null> {
+  try {
+    const resolved = await resolveYouTubeVideo(youtubeUrl);
+    return resolved.streamUrls;
+  } catch (err) {
+    logger.warn({ url: youtubeUrl, err }, "Failed to resolve stream URLs");
+    return null;
+  }
 }
