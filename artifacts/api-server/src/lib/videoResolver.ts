@@ -156,21 +156,27 @@ export async function resolveYouTubeVideo(
       };
     });
 
+  // YouTube DASH streams are video-only or audio-only — a plain <video> tag
+  // cannot play them without MSE muxing. We must use only combined (video+audio)
+  // streams, which are typically itag=22 (720p mp4) and itag=18 (360p mp4).
   const combined = formats.filter((f) => f.type === "video+audio");
-  const videoOnly = formats
-    .filter((f) => f.type === "video" && f.ext === "mp4")
+
+  // Prefer mp4 combined, sorted best quality first
+  const combinedMp4 = combined
+    .filter((f) => f.ext === "mp4")
     .sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
 
-  // best = highest quality mp4 video (720p or best available), preferring combined if ≥720p
-  const bestCombined720 = combined.find((f) => (f.height ?? 0) >= 720 && f.ext === "mp4");
-  const bestVideo = bestCombined720 ?? videoOnly[0] ?? combined[0] ?? formats[0];
+  // Any combined stream as fallback (webm, etc.)
+  const combinedAny = [...combined].sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
 
-  // medium = 360p combined mp4, or next best combined, or lower video-only
-  const medium360Combined = combined.find((f) => f.height === 360 && f.ext === "mp4");
-  const anyMediumCombined = combined.find((f) => (f.height ?? 0) <= 480 && f.ext === "mp4") ?? combined[0];
-  const medium480Video = videoOnly.find((f) => f.height === 480);
-  const medium360Video = videoOnly.find((f) => f.height === 360);
-  const mediumVideo = medium360Combined ?? anyMediumCombined ?? medium480Video ?? medium360Video ?? bestVideo;
+  // best = highest quality combined stream (audio always included)
+  const bestVideo = combinedMp4[0] ?? combinedAny[0] ?? formats[0];
+
+  // medium = lowest quality combined mp4 (smallest file, fastest load)
+  const mediumVideo =
+    combinedMp4[combinedMp4.length - 1] ??
+    combinedAny[combinedAny.length - 1] ??
+    bestVideo;
 
   return {
     videoId: data.id,

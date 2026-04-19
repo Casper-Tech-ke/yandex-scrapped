@@ -92,7 +92,7 @@ export function VideoPlayerModal({ video, open, onClose }: VideoPlayerModalProps
                   onClick={() => { setQuality("best"); setError(false); }}
                   className="text-xs"
                 >
-                  HD (Best)
+                  Best Quality
                 </Button>
                 <Button
                   variant={quality === "medium" ? "default" : "secondary"}
@@ -100,7 +100,7 @@ export function VideoPlayerModal({ video, open, onClose }: VideoPlayerModalProps
                   onClick={() => { setQuality("medium"); setError(false); }}
                   className="text-xs"
                 >
-                  SD (Medium)
+                  Lower Quality
                 </Button>
                 <Button asChild variant="outline" size="sm" className="text-xs">
                   <a href={streamUrl ?? video.streamUrls.best} download target="_blank" rel="noopener noreferrer">
