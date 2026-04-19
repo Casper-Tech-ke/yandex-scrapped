@@ -5,8 +5,50 @@ import { logger } from "./logger";
 const execFileAsync = promisify(execFile);
 
 const YTDLP_PATH = "/home/runner/yt-dlp";
-const PYTHON_PATH = "/home/runner/.nix-profile/bin/python3.10";
 const TIMEOUT_MS = 25_000;
+
+// Candidate Python paths in preference order — the Nix store path changes on
+// module reinstalls so we probe each one at startup and pick the first that works.
+const PYTHON_CANDIDATES = [
+  "/home/runner/.nix-profile/bin/python3.10",
+  "/home/runner/.nix-profile/bin/python3",
+  "/usr/bin/python3.10",
+  "/usr/bin/python3",
+  "python3.10",
+  "python3",
+];
+
+async function findPython(): Promise<string> {
+  for (const p of PYTHON_CANDIDATES) {
+    try {
+      await execFileAsync(p, ["--version"], { timeout: 3_000 });
+      logger.info({ python: p }, "Found Python for yt-dlp");
+      return p;
+    } catch {
+      // try next
+    }
+  }
+  // Last resort: use `which` via the shell
+  try {
+    const { stdout } = await execFileAsync("sh", ["-c", "which python3.10 || which python3"], {
+      timeout: 3_000,
+    });
+    const resolved = stdout.trim();
+    if (resolved) {
+      logger.info({ python: resolved }, "Found Python via which");
+      return resolved;
+    }
+  } catch {
+    // ignore
+  }
+  throw new Error("No Python interpreter found — install python-3.10 module");
+}
+
+let _pythonPath: string | null = null;
+async function getPython(): Promise<string> {
+  if (!_pythonPath) _pythonPath = await findPython();
+  return _pythonPath;
+}
 
 export interface StreamFormat {
   formatId: string;
@@ -58,9 +100,10 @@ export async function resolveYouTubeVideo(
   logger.info({ url }, "Resolving YouTube video");
 
   const nodeExec = process.execPath;
+  const pythonPath = await getPython();
 
   const { stdout } = await execFileAsync(
-    PYTHON_PATH,
+    pythonPath,
     [
       YTDLP_PATH,
       "--js-runtimes",
