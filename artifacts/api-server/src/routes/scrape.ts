@@ -270,11 +270,11 @@ export interface VideoResult {
   videoId: string;
   title: string;
   url: string;
+  previewUrl: string;
   thumb: string;
   description: string;
   width: number | null;
   height: number | null;
-  yandexUrl: string;
 }
 
 interface VideoClip {
@@ -340,11 +340,11 @@ function parseYandexVideoHtml(html: string, debug?: string[]): VideoResult[] {
         videoId: vid,
         title,
         url: relUrl,
+        previewUrl: `https://yandex.com/video/preview/${vid}`,
         thumb,
         description: clip.description ?? "",
         width: clip.cwidth ?? null,
         height: clip.cheight ?? null,
-        yandexUrl: `https://yandex.com/video/search?text=${encodeURIComponent(title)}&filmId=${vid}`,
       });
     }
   } catch (err) {
