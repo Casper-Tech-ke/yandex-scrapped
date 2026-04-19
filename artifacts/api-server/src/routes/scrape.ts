@@ -97,35 +97,86 @@ function parseYandexHtml(html: string, debug?: string[]): ImageResult[] {
   return results;
 }
 
+const PER_PAGE = 30;
+const MAX_IMAGES = 300;
+const MAX_PARALLEL_PAGES = 4;
+
+async function fetchPage(
+  text: string,
+  pageIndex: number
+): Promise<ImageResult[]> {
+  const params = new URLSearchParams({ text, lr: "21312" });
+  if (pageIndex > 0) params.set("p", String(pageIndex));
+  const url = `https://yandex.com/images/search?${params.toString()}`;
+  const { body } = await proxyManager.fetchWithAnyProxy(url, BROWSER_HEADERS);
+  return parseYandexHtml(body);
+}
+
 router.get("/scrape/images", async (req: Request, res: Response) => {
   const text = (req.query.text as string) || "";
   const page = parseInt((req.query.page as string) || "0", 10);
+  const requestedCount = Math.min(
+    parseInt((req.query.count as string) || "30", 10),
+    MAX_IMAGES
+  );
 
   if (!text.trim()) {
     res.status(400).json({ error: "Missing required query param: text" });
     return;
   }
 
-  const params = new URLSearchParams({ text, lr: "21312" });
-  if (page > 0) params.set("p", String(page));
-  const url = `https://yandex.com/images/search?${params.toString()}`;
-
-  req.log.info({ url }, "Scraping Yandex Images");
+  req.log.info({ text, page, requestedCount }, "Scraping Yandex Images");
 
   try {
-    const { body, proxy } = await proxyManager.fetchWithAnyProxy(
-      url,
-      BROWSER_HEADERS
-    );
+    if (requestedCount <= PER_PAGE) {
+      const images = await fetchPage(text, page);
+      res.json({
+        query: text,
+        page,
+        count: images.length,
+        images: images.slice(0, requestedCount),
+      });
+      return;
+    }
 
-    const images = parseYandexHtml(body);
+    const pagesNeeded = Math.ceil(requestedCount / PER_PAGE);
+    const allImages: ImageResult[] = [];
+
+    for (
+      let batchStart = 0;
+      batchStart < pagesNeeded && allImages.length < requestedCount;
+      batchStart += MAX_PARALLEL_PAGES
+    ) {
+      const batchEnd = Math.min(batchStart + MAX_PARALLEL_PAGES, pagesNeeded);
+      const pageIndices = Array.from(
+        { length: batchEnd - batchStart },
+        (_, i) => page + batchStart + i
+      );
+
+      req.log.info({ pages: pageIndices }, "Fetching batch of pages");
+
+      const batchResults = await Promise.allSettled(
+        pageIndices.map((p) => fetchPage(text, p))
+      );
+
+      let batchEmpty = true;
+      for (const r of batchResults) {
+        if (r.status === "fulfilled" && r.value.length > 0) {
+          allImages.push(...r.value);
+          batchEmpty = false;
+        }
+      }
+
+      if (batchEmpty) break;
+    }
+
+    const unique = deduplicateImages(allImages).slice(0, requestedCount);
 
     res.json({
       query: text,
       page,
-      count: images.length,
-      proxy,
-      images,
+      count: unique.length,
+      images: unique,
     });
   } catch (err) {
     req.log.error({ err }, "Scrape failed");
@@ -136,6 +187,15 @@ router.get("/scrape/images", async (req: Request, res: Response) => {
     });
   }
 });
+
+function deduplicateImages(images: ImageResult[]): ImageResult[] {
+  const seen = new Set<string>();
+  return images.filter((img) => {
+    if (seen.has(img.origUrl)) return false;
+    seen.add(img.origUrl);
+    return true;
+  });
+}
 
 router.get("/scrape/proxies", (_req: Request, res: Response) => {
   res.json(proxyManager.getStats());
