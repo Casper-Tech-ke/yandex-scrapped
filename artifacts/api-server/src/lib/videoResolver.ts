@@ -93,6 +93,10 @@ export function isYouTubeUrl(url: string): boolean {
   );
 }
 
+export function isTikTokUrl(url: string): boolean {
+  return url.includes("tiktok.com") || url.includes("vm.tiktok.com");
+}
+
 export async function resolveYouTubeVideo(
   urlOrId: string
 ): Promise<ResolvedVideo> {
