@@ -1,5 +1,4 @@
-import { useRef, useEffect, useState } from "react";
-import Hls from "hls.js";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download, Youtube, AlertCircle } from "lucide-react";
@@ -11,13 +10,7 @@ interface VideoPlayerModalProps {
   onClose: () => void;
 }
 
-function isHlsUrl(url: string): boolean {
-  return url.includes(".m3u8") || url.includes("hls_playlist");
-}
-
 export function VideoPlayerModal({ video, open, onClose }: VideoPlayerModalProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const hlsRef = useRef<Hls | null>(null);
   const [quality, setQuality] = useState<"best" | "medium">("best");
   const [error, setError] = useState(false);
 
@@ -29,63 +22,6 @@ export function VideoPlayerModal({ video, open, onClose }: VideoPlayerModalProps
       : null;
 
   const streamUrl = rawStreamUrl ? proxyStreamUrl(rawStreamUrl) : null;
-
-  // Attach / detach HLS.js whenever the stream URL changes or modal closes
-  useEffect(() => {
-    const videoEl = videoRef.current;
-
-    // Tear down any previous HLS instance
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-
-    if (!open || !streamUrl || !videoEl) return;
-
-    setError(false);
-
-    if (isHlsUrl(streamUrl)) {
-      if (Hls.isSupported()) {
-        const hls = new Hls({ enableWorker: false });
-        hlsRef.current = hls;
-        hls.loadSource(streamUrl);
-        hls.attachMedia(videoEl);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          videoEl.play().catch(() => {});
-        });
-        hls.on(Hls.Events.ERROR, (_event, data) => {
-          if (data.fatal) {
-            if (quality === "best") {
-              setQuality("medium");
-            } else {
-              setError(true);
-            }
-          }
-        });
-      } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
-        // Safari: native HLS support
-        videoEl.src = streamUrl;
-        videoEl.play().catch(() => {});
-      } else {
-        setError(true);
-      }
-    } else {
-      // Direct MP4 progressive stream
-      videoEl.src = streamUrl;
-      videoEl.play().catch(() => {});
-    }
-
-    return () => {
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-      if (videoEl) {
-        videoEl.pause();
-        videoEl.src = "";
-      }
-    };
-  }, [open, streamUrl, quality]);
 
   const handleVideoError = () => {
     if (quality === "best") {
@@ -108,10 +44,12 @@ export function VideoPlayerModal({ video, open, onClose }: VideoPlayerModalProps
         <DialogTitle className="sr-only">{video.title}</DialogTitle>
 
         <div className="relative w-full aspect-video bg-black">
-          {!error ? (
+          {!error && streamUrl ? (
             <video
-              ref={videoRef}
+              key={streamUrl}
+              src={streamUrl}
               controls
+              autoPlay
               className="w-full h-full"
               onError={handleVideoError}
               controlsList="nodownload"
@@ -126,7 +64,9 @@ export function VideoPlayerModal({ video, open, onClose }: VideoPlayerModalProps
               />
               <AlertCircle className="h-10 w-10 text-destructive relative z-10" />
               <p className="relative z-10 text-sm text-white/80">
-                Stream unavailable or expired. Open on YouTube to watch.
+                {streamUrl
+                  ? "Stream unavailable or expired. Open on YouTube to watch."
+                  : "No stream available for this video. Open on YouTube to watch."}
               </p>
             </div>
           )}

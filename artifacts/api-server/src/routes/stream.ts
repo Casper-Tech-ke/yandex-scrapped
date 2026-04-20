@@ -56,6 +56,11 @@ const FETCH_HEADERS: Record<string, string> = {
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   Accept: "*/*",
   "Accept-Language": "en-US,en;q=0.9",
+  // YouTube CDN requires these or it returns 403 on HLS manifests and segments
+  Referer: "https://www.youtube.com/",
+  Origin: "https://www.youtube.com",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "cross-site",
 };
 
 /**
@@ -107,9 +112,28 @@ router.get("/stream", async (req: Request, res: Response) => {
       contentType.includes("x-mpegURL") ||
       targetUrl.includes(".m3u8");
 
+    logger.info(
+      { targetUrl: targetUrl.slice(0, 80), status: upstream.status, contentType, isHls },
+      "Stream proxy upstream response"
+    );
+
+    // If upstream returned an error, always forward it as-is (never wrap HTML as M3U8)
+    if (!upstream.ok) {
+      const errBody = await upstream.text();
+      logger.warn({ status: upstream.status, body: errBody.slice(0, 200) }, "Upstream CDN error");
+      res.status(upstream.status).json({ error: `CDN error ${upstream.status}` });
+      return;
+    }
+
     if (isHls && upstream.body) {
       // Read the manifest text, rewrite all CDN URLs, return modified manifest
       const text = await upstream.text();
+      // Sanity check: if it doesn't look like M3U8, return an error
+      if (!text.trim().startsWith("#EXTM3U")) {
+        logger.warn({ head: text.slice(0, 100) }, "Upstream returned non-M3U8 despite HLS content-type");
+        res.status(502).json({ error: "Upstream returned invalid M3U8 content" });
+        return;
+      }
       const rewritten = rewriteM3u8(text, req);
       res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
       res.setHeader("Access-Control-Allow-Origin", "*");

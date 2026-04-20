@@ -136,7 +136,14 @@ export async function resolveYouTubeVideo(
   };
 
   const formats: StreamFormat[] = (data.formats ?? [])
-    .filter((f) => f.url && f.ext !== "mhtml")
+    .filter((f) => {
+      if (!f.url || f.ext === "mhtml") return false;
+      // HLS manifest URLs from yt-dlp's JS extractor are signed for the yt-dlp
+      // session and return 403 when re-fetched by our proxy.  Only keep direct
+      // CDN videoplayback URLs which can be reliably proxied.
+      if (f.url.includes("manifest.googlevideo.com")) return false;
+      return true;
+    })
     .map((f) => {
       const hasVideo = f.vcodec && f.vcodec !== "none";
       const hasAudio = f.acodec && f.acodec !== "none";
