@@ -1,3 +1,31 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+  <!-- Background -->
+  <rect width="180" height="180" rx="36" fill="#0a0f1a"/>
+  <rect width="180" height="180" rx="36" fill="url(#bg-grad)" opacity="0.8"/>
+
+  <!-- Image grid tiles (left side) -->
+  <rect x="18" y="22" width="36" height="28" rx="5" fill="#00d4ff" opacity="0.85"/>
+  <rect x="18" y="56" width="36" height="44" rx="5" fill="#0099cc" opacity="0.7"/>
+  <rect x="18" y="106" width="36" height="28" rx="5" fill="#00d4ff" opacity="0.55"/>
+  <rect x="60" y="22" width="36" height="44" rx="5" fill="#0099cc" opacity="0.65"/>
+  <rect x="60" y="72" width="36" height="36" rx="5" fill="#00d4ff" opacity="0.75"/>
+  <rect x="60" y="114" width="36" height="20" rx="5" fill="#0099cc" opacity="0.5"/>
+
+  <!-- Play button circle (right side, overlapping) -->
+  <circle cx="130" cy="95" r="38" fill="#00d4ff" opacity="0.12"/>
+  <circle cx="130" cy="95" r="30" fill="#00d4ff" opacity="0.2"/>
+  <circle cx="130" cy="95" r="22" fill="#00d4ff" opacity="0.9"/>
+  <!-- Play triangle -->
+  <polygon points="124,86 124,104 142,95" fill="#0a0f1a"/>
+
+  <!-- Search magnifier overlay -->
+  <circle cx="148" cy="73" r="12" fill="none" stroke="#00d4ff" stroke-width="3.5" opacity="0.9"/>
+  <line x1="156" y1="81" x2="163" y2="88" stroke="#00d4ff" stroke-width="3.5" stroke-linecap="round" opacity="0.9"/>
+
+  <defs>
+    <linearGradient id="bg-grad" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00d4ff" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#003366" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
 </svg>

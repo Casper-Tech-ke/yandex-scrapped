@@ -179,6 +179,8 @@ export default function ApiDocs() {
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <header className="border-b border-border/40 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
+          <NavDropdown />
+
           <button
             onClick={() => navigate("/")}
             className="flex flex-col items-start shrink-0 hover:opacity-80 transition-opacity"
@@ -199,7 +201,6 @@ export default function ApiDocs() {
           >
             <ArrowLeft className="h-4 w-4" /> Back to Search
           </Button>
-          <NavDropdown />
         </div>
       </header>
 
