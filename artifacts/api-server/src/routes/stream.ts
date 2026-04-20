@@ -17,20 +17,54 @@ function isAllowedUrl(raw: string): boolean {
     const u = new URL(raw);
     return (
       (u.protocol === "https:" || u.protocol === "http:") &&
-      ALLOWED_HOSTS.some((h) => u.hostname.endsWith(h))
+      ALLOWED_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`))
     );
   } catch {
     return false;
   }
 }
 
+function buildProxyUrl(req: Request, cdnUrl: string): string {
+  const host = req.get("host") ?? "localhost";
+  const proto = req.get("x-forwarded-proto") ?? req.protocol ?? "https";
+  return `${proto}://${host}/api/stream?url=${encodeURIComponent(cdnUrl)}`;
+}
+
+/**
+ * Rewrite every absolute URL in an M3U8 body so it goes through /api/stream.
+ * Handles both master manifests (referencing other .m3u8 files) and
+ * media manifests (referencing .ts / .m4s segments).
+ */
+function rewriteM3u8(body: string, req: Request): string {
+  return body
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+      // Keep comments and empty lines as-is
+      if (!trimmed || trimmed.startsWith("#")) return line;
+      // Rewrite any absolute URL
+      if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        return buildProxyUrl(req, trimmed);
+      }
+      return line;
+    })
+    .join("\n");
+}
+
+const FETCH_HEADERS: Record<string, string> = {
+  "User-Agent":
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  Accept: "*/*",
+  "Accept-Language": "en-US,en;q=0.9",
+};
+
 /**
  * GET /api/stream?url=<encoded_cdn_url>
  *
- * Proxies a YouTube CDN stream through the server so the browser can play it.
- * CDN URLs are IP-locked to the machine that ran yt-dlp; browsers can't use
- * them directly. This endpoint fetches from the same server IP and pipes bytes
- * to the browser, including Range request forwarding so seeking works.
+ * Proxies YouTube CDN streams through the server so the browser can play them.
+ * CDN URLs are IP-locked to the machine that ran yt-dlp. Supports:
+ *   - Direct MP4 progressive downloads (Range forwarding for seeking)
+ *   - HLS manifests (.m3u8) — URLs inside are rewritten to also go through this proxy
  */
 router.get("/stream", async (req: Request, res: Response) => {
   const raw = req.query["url"];
@@ -49,32 +83,42 @@ router.get("/stream", async (req: Request, res: Response) => {
   }
 
   if (!isAllowedUrl(targetUrl)) {
+    logger.warn({ targetUrl }, "Stream proxy: URL not in allowlist");
     res.status(403).json({ error: "URL not allowed" });
     return;
   }
 
-  const fetchHeaders: HeadersInit = {
-    "User-Agent":
-      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "*/*",
-    "Accept-Language": "en-US,en;q=0.9",
-  };
+  const fetchHeaders: Record<string, string> = { ...FETCH_HEADERS };
 
-  // Forward Range header so the browser can seek within the video
+  // Forward Range header for seekable MP4 playback
   const rangeHeader = req.headers["range"];
-  if (rangeHeader) {
-    (fetchHeaders as Record<string, string>)["Range"] = rangeHeader;
-  }
+  if (rangeHeader) fetchHeaders["Range"] = rangeHeader;
 
   try {
-    // Use global fetch (Node 18+) — follows redirects automatically
     const upstream = await fetch(targetUrl, {
       method: "GET",
       headers: fetchHeaders,
       redirect: "follow",
     });
 
-    // Forward the key headers the browser needs for video playback
+    const contentType = upstream.headers.get("content-type") ?? "";
+    const isHls =
+      contentType.includes("mpegurl") ||
+      contentType.includes("x-mpegURL") ||
+      targetUrl.includes(".m3u8");
+
+    if (isHls && upstream.body) {
+      // Read the manifest text, rewrite all CDN URLs, return modified manifest
+      const text = await upstream.text();
+      const rewritten = rewriteM3u8(text, req);
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cache-Control", "no-cache");
+      res.status(200).send(rewritten);
+      return;
+    }
+
+    // Direct binary stream (MP4, TS segments, etc.)
     const forward = [
       "content-type",
       "content-length",
@@ -86,7 +130,6 @@ router.get("/stream", async (req: Request, res: Response) => {
       const val = upstream.headers.get(h);
       if (val) res.setHeader(h, val);
     }
-
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.status(upstream.status);
 
@@ -95,7 +138,6 @@ router.get("/stream", async (req: Request, res: Response) => {
       return;
     }
 
-    // Pipe the Web ReadableStream to Express response
     const nodeStream = Readable.fromWeb(
       upstream.body as import("stream/web").ReadableStream<Uint8Array>
     );
