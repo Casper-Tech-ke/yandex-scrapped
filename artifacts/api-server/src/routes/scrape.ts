@@ -108,7 +108,7 @@ async function fetchPage(
   return parseYandexHtml(body);
 }
 
-router.get("/scrape/images", async (req: Request, res: Response) => {
+async function handleImageSearch(req: Request, res: Response) {
   const text = (req.query.text as string) || "";
   const page = parseInt((req.query.page as string) || "0", 10);
   const requestedCount = Math.min(
@@ -182,7 +182,10 @@ router.get("/scrape/images", async (req: Request, res: Response) => {
       images: [],
     });
   }
-});
+}
+
+router.get("/scrape/images", handleImageSearch);
+router.get("/v1/image", handleImageSearch);
 
 function deduplicateImages(images: ImageResult[]): ImageResult[] {
   const seen = new Set<string>();
@@ -387,7 +390,7 @@ async function enrichWithStreamUrls(videos: VideoResult[]): Promise<VideoResult[
   return results;
 }
 
-router.get("/scrape/videos", async (req: Request, res: Response) => {
+async function handleVideoSearch(req: Request, res: Response) {
   const text = (req.query.text as string) || "";
   const page = parseInt((req.query.page as string) || "0", 10);
   const requestedCount = Math.min(
@@ -469,7 +472,10 @@ router.get("/scrape/videos", async (req: Request, res: Response) => {
       videos: [],
     });
   }
-});
+}
+
+router.get("/scrape/videos", handleVideoSearch);
+router.get("/v1/video", handleVideoSearch);
 
 router.get("/scrape/videos/debug", async (req: Request, res: Response) => {
   const text = (req.query.text as string) || "cat";
