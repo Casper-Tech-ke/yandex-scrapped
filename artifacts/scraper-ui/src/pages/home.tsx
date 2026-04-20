@@ -92,19 +92,22 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <header className="border-b border-border/40 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <NavDropdown onTabChange={handleTabChange} />
-
-          <div className="flex flex-col items-start shrink-0">
-            <h1 className="text-xl font-black tracking-tight text-primary leading-none">
-              CASPER TECH DEVS
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium mt-0.5">
-              Image & Video Scraper
-            </p>
+        <div className="container mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+          {/* Top row on mobile: menu + brand */}
+          <div className="flex items-center gap-3 shrink-0">
+            <NavDropdown onTabChange={handleTabChange} />
+            <div className="flex flex-col items-start">
+              <h1 className="text-xl font-black tracking-tight text-primary leading-none">
+                CASPER TECH DEVS
+              </h1>
+              <p className="text-xs text-muted-foreground font-medium mt-0.5">
+                Image & Video Scraper
+              </p>
+            </div>
           </div>
 
-          <div className="flex-grow">
+          {/* Search bar — full width on mobile, grows on desktop */}
+          <div className="w-full sm:flex-grow">
             <SearchBar onSearch={handleSearch} isLoading={isLoading} />
           </div>
         </div>
