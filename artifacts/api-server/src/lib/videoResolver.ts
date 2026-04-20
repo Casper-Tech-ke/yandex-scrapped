@@ -102,12 +102,13 @@ export async function resolveYouTubeVideo(
   const nodeExec = process.execPath;
   const pythonPath = await getPython();
 
+  // Runtime identifier is "node" not "nodejs" (yt-dlp naming)
   const { stdout } = await execFileAsync(
     pythonPath,
     [
       YTDLP_PATH,
       "--js-runtimes",
-      `nodejs:${nodeExec}`,
+      `node:${nodeExec}`,
       "-j",
       "--no-playlist",
       url,
