@@ -5,7 +5,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { proxyManager } from "./lib/proxyManager";
 
-const YTDLP_PATH = "/home/runner/yt-dlp";
+const YTDLP_PATH = process.env["YTDLP_PATH"] ?? "/home/runner/yt-dlp";
 const YTDLP_URL =
   "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
 

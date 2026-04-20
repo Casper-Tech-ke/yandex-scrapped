@@ -4,7 +4,7 @@ import { logger } from "./logger";
 
 const execFileAsync = promisify(execFile);
 
-const YTDLP_PATH = "/home/runner/yt-dlp";
+const YTDLP_PATH = process.env["YTDLP_PATH"] ?? "/home/runner/yt-dlp";
 const TIMEOUT_MS = 25_000;
 
 // Candidate Python paths in preference order — the Nix store path changes on

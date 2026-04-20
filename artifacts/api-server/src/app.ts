@@ -2,8 +2,13 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import cors from "cors";
 import pinoHttp from "pino-http";
 import { createProxyMiddleware } from "http-proxy-middleware";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import router from "./routes";
 import { logger } from "./lib/logger";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const BRANDING = {
   provider: "CASPER TECH DEVS",
@@ -50,6 +55,22 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
 });
 
 app.use("/api", router);
+
+// In production, serve the pre-built scraper-ui static files directly.
+// The frontend is built with BASE_PATH=/scraper-ui/ so all assets are under that path.
+if (process.env.NODE_ENV !== "development") {
+  const uiDist = path.resolve(__dirname, "../../scraper-ui/dist/public");
+  if (existsSync(uiDist)) {
+    app.use("/scraper-ui", express.static(uiDist));
+    // SPA fallback: serve index.html for any unmatched /scraper-ui/* path
+    app.get("/scraper-ui/*", (_req: Request, res: Response) => {
+      res.sendFile(path.join(uiDist, "index.html"));
+    });
+    logger.info({ uiDist }, "Serving scraper-ui static files");
+  } else {
+    logger.warn({ uiDist }, "scraper-ui dist not found — run pnpm --filter @workspace/scraper-ui run build first");
+  }
+}
 
 // In development, proxy the scraper-ui Vite dev server through the api-server.
 // This lets the frontend be reachable at /scraper-ui/ via the main port (8080 → 80).

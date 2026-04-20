@@ -73,19 +73,109 @@ Open `http://localhost:8080/scraper-ui/`
 
 ## Deployment
 
+> **⚠️ IP-Lock Notice:** YouTube CDN stream URLs are tied to the **exact server IP** that ran yt-dlp. The same IP must also serve the `/api/stream` proxy. Platforms that rotate or share outbound IPs (serverless, Heroku free dynos) will cause stream 403 errors. Use a fixed-IP plan where possible.
+
+---
+
 ### Replit (Recommended)
 
-This project is built for Replit and deploys in one click.
+The easiest one-click deployment, fully integrated with the project.
 
-1. Open the project in [Replit](https://replit.com)
-2. Click **Deploy** → **Autoscale** or **Reserved VM**
-3. Replit will build and publish the app to a `.replit.app` domain automatically
+1. Open your project on [Replit](https://replit.com)
+2. Click **Deploy** in the top-right corner
+3. Choose **Reserved VM** ← required for a fixed IP and reliable streaming
+4. Click **Deploy** — Replit builds and publishes to `your-app.replit.app` automatically
 
-> **Important:** YouTube CDN stream URLs are locked to the server's IP address. For streaming to work in production, you **must** deploy to a server with a **fixed public IP** — Replit Reserved VM gives you this. Autoscale may rotate IPs between requests and break stream playback.
+yt-dlp is downloaded automatically on first boot. No extra config needed.
 
-**Recommended Replit deployment type:** Reserved VM
+> **Autoscale vs Reserved VM:** Autoscale spins up containers on demand and may use different IPs per request, breaking the YouTube CDN IP-lock. **Reserved VM** keeps a single fixed IP — use this for production.
 
-Once deployed, yt-dlp is downloaded automatically on first start. No extra setup is required.
+---
+
+### Render
+
+Render supports the included `render.yaml` Blueprint for one-click deployment.
+
+#### Option A — Blueprint (easiest)
+
+1. Fork this repo to your GitHub account
+2. Go to [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**
+3. Connect your GitHub repo — Render detects `render.yaml` automatically
+4. Add your `SESSION_SECRET` environment variable when prompted
+5. Click **Apply** — Render builds and deploys
+
+#### Option B — Manual Web Service
+
+1. **New** → **Web Service** → connect your GitHub repo
+2. Set the following:
+
+| Field | Value |
+|---|---|
+| **Runtime** | Node |
+| **Build Command** | `npm install -g pnpm && pnpm install && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /home/render/yt-dlp && chmod +x /home/render/yt-dlp && BASE_PATH=/scraper-ui/ pnpm --filter @workspace/scraper-ui run build && pnpm --filter @workspace/api-server run build` |
+| **Start Command** | `node artifacts/api-server/dist/index.mjs` |
+| **Health Check Path** | `/api/health` |
+
+3. Add environment variables under **Environment**:
+
+| Key | Value |
+|---|---|
+| `NODE_ENV` | `production` |
+| `YTDLP_PATH` | `/home/render/yt-dlp` |
+| `SESSION_SECRET` | *(generate a random string)* |
+
+4. Click **Create Web Service**
+
+> **Render IP note:** Render **Starter** plan instances have a stable outbound IP per region. Streaming should work reliably. The free tier may have cold starts that invalidate cached stream URLs.
+
+Once deployed, your app is live at `https://casper-scraper.onrender.com/scraper-ui/`
+
+---
+
+### Heroku
+
+> **⚠️ Heroku IP warning:** Standard Heroku dynos use **shared, rotating IPs**. YouTube CDN will 403 stream requests after a dyno restart or cycling. Use Heroku's [Static IP add-on](https://elements.heroku.com/addons/fixie) (Fixie or QuotaGuard) to get a fixed outbound IP if you need reliable streaming.
+
+#### 1. Install the Heroku CLI
+
+```bash
+curl https://cli-assets.heroku.com/install.sh | sh
+heroku login
+```
+
+#### 2. Create the app and set buildpacks
+
+```bash
+heroku create your-app-name
+
+# Add both Node.js and Python buildpacks (Python is needed for yt-dlp)
+heroku buildpacks:add heroku/nodejs
+heroku buildpacks:add heroku/python
+```
+
+#### 3. Set environment variables
+
+```bash
+heroku config:set NODE_ENV=production
+heroku config:set SESSION_SECRET=$(openssl rand -hex 32)
+heroku config:set YTDLP_PATH=/app/yt-dlp
+```
+
+#### 4. Deploy
+
+```bash
+git push heroku main
+heroku open
+```
+
+Your app will be at `https://your-app-name.herokuapp.com/scraper-ui/`
+
+The included `Procfile` and `heroku-postbuild` script handle everything automatically:
+- Downloads yt-dlp to `/app/yt-dlp`
+- Builds the scraper-ui frontend
+- Builds the api-server
+
+> **Note:** Heroku's ephemeral filesystem resets on each dyno restart. yt-dlp is re-downloaded automatically via the `heroku-postbuild` hook, which Heroku runs on every deploy. Between deploys, the server also auto-downloads it at startup if the binary is missing.
 
 ---
 
