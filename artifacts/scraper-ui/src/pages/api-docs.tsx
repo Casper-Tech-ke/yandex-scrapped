@@ -168,6 +168,7 @@ function CodeBlock({ code }: { code: string }) {
 
 export default function ApiDocs() {
   const [, navigate] = useLocation();
+  const baseUrl = typeof window !== "undefined" ? `${window.location.origin}/api/v1` : "/api/v1";
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
@@ -221,7 +222,7 @@ export default function ApiDocs() {
                 <Zap className="h-4 w-4 text-yellow-400" />
                 <span className="text-sm font-semibold">Base URL</span>
               </div>
-              <code className="text-xs text-muted-foreground font-mono">/api/v1</code>
+              <code className="text-xs text-primary/80 font-mono break-all">{baseUrl}</code>
             </div>
             <div className="bg-card border border-border/40 rounded-lg p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -358,7 +359,7 @@ export default function ApiDocs() {
             <div>
               <p className="text-xs text-muted-foreground mb-2 font-medium">Search images:</p>
               <CodeBlock
-                code={`fetch('/api/v1/image?text=sunset&count=20')
+                code={`fetch('${baseUrl}/image?text=sunset&count=20')
   .then(r => r.json())
   .then(data => {
     data.images.forEach(img => {
@@ -370,7 +371,7 @@ export default function ApiDocs() {
             <div>
               <p className="text-xs text-muted-foreground mb-2 font-medium">Search videos:</p>
               <CodeBlock
-                code={`fetch('/api/v1/video?text=nature+documentary&count=5')
+                code={`fetch('${baseUrl}/video?text=nature+documentary&count=5')
   .then(r => r.json())
   .then(data => {
     data.videos.forEach(video => {
@@ -383,7 +384,7 @@ export default function ApiDocs() {
               <p className="text-xs text-muted-foreground mb-2 font-medium">Paginate through results:</p>
               <CodeBlock
                 code={`// Page 0 → first 30, page 1 → next 30, etc.
-fetch('/api/v1/image?text=cars&count=30&page=1')
+fetch('${baseUrl}/image?text=cars&count=30&page=1')
   .then(r => r.json())
   .then(data => console.log(\`Got \${data.count} images\`));`}
               />
