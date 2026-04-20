@@ -71,6 +71,139 @@ Open `http://localhost:8080/scraper-ui/`
 
 ---
 
+## Deployment
+
+### Replit (Recommended)
+
+This project is built for Replit and deploys in one click.
+
+1. Open the project in [Replit](https://replit.com)
+2. Click **Deploy** → **Autoscale** or **Reserved VM**
+3. Replit will build and publish the app to a `.replit.app` domain automatically
+
+> **Important:** YouTube CDN stream URLs are locked to the server's IP address. For streaming to work in production, you **must** deploy to a server with a **fixed public IP** — Replit Reserved VM gives you this. Autoscale may rotate IPs between requests and break stream playback.
+
+**Recommended Replit deployment type:** Reserved VM
+
+Once deployed, yt-dlp is downloaded automatically on first start. No extra setup is required.
+
+---
+
+### Self-Hosting (VPS / Cloud)
+
+You can host this on any server with a fixed public IP (AWS EC2, Google Cloud, DigitalOcean Droplet, Hetzner, etc.).
+
+#### 1. Clone and install
+
+```bash
+git clone https://github.com/Casper-Tech-ke/casper-scraper.git
+cd casper-scraper
+npm install -g pnpm
+pnpm install
+```
+
+#### 2. Install system dependencies
+
+```bash
+# Python 3.10+ (for yt-dlp)
+sudo apt install python3 python3-pip -y
+
+# Download yt-dlp
+curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
+  -o /home/$USER/yt-dlp
+chmod +x /home/$USER/yt-dlp
+```
+
+#### 3. Set environment variables
+
+Create a `.env` file or export these in your shell / process manager:
+
+```env
+PORT=8080
+NODE_ENV=production
+SESSION_SECRET=your-long-random-secret-here
+```
+
+#### 4. Build and start
+
+```bash
+pnpm --filter @workspace/api-server run build
+pnpm --filter @workspace/api-server run start
+```
+
+The app will be available at `http://your-server-ip:8080/scraper-ui/`
+
+#### 5. Run as a system service (optional)
+
+Create `/etc/systemd/system/casper-scraper.service`:
+
+```ini
+[Unit]
+Description=CASPER TECH DEVS Scraper
+After=network.target
+
+[Service]
+Type=simple
+User=your-user
+WorkingDirectory=/path/to/casper-scraper
+ExecStart=/usr/bin/node artifacts/api-server/dist/index.mjs
+Restart=on-failure
+Environment=PORT=8080
+Environment=NODE_ENV=production
+Environment=SESSION_SECRET=your-secret-here
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable casper-scraper
+sudo systemctl start casper-scraper
+```
+
+#### 6. Reverse proxy with Nginx (optional)
+
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        # Required for video streaming (large responses, no buffering)
+        proxy_buffering off;
+        proxy_read_timeout 120s;
+    }
+}
+```
+
+Then add SSL with Certbot:
+
+```bash
+sudo certbot --nginx -d yourdomain.com
+```
+
+---
+
+### Production Notes
+
+| Topic | Detail |
+|---|---|
+| **IP locking** | YouTube CDN URLs are tied to the server IP. The server that runs yt-dlp must also proxy the stream. Do not put the stream proxy behind a load balancer with multiple IPs. |
+| **yt-dlp path** | The server expects yt-dlp at `/home/runner/yt-dlp`. Override by setting `YTDLP_PATH` env var. |
+| **Stream URL expiry** | Resolved stream URLs expire in ~6 hours. Users must re-search to get fresh playable URLs. |
+| **Proxy pool** | The free proxy pool is validated at startup. In production, expect ~20–40% of proxies to be active at any time. |
+| **Memory** | yt-dlp resolution uses ~50 MB per concurrent resolve. Limit `MAX_PARALLEL_RESOLVE` in `scrape.ts` if memory is constrained. |
+
+---
+
 ## API Reference
 
 | Method | Endpoint | Description |
