@@ -1,12 +1,21 @@
 const BASE = "/api";
 
 /**
- * Wraps a raw CDN stream URL in the server-side stream proxy.
- * CDN URLs are IP-locked; the browser can't use them directly.
- * The server fetches and pipes them instead.
+ * Returns a browser-usable URL for the given stream URL.
+ *
+ * - googlevideo.com URLs are IP-locked to our server, so we route them
+ *   through our server-side stream proxy which fetches from the same IP.
+ * - All other URLs (CASPER proxy, etc.) are returned as-is because their
+ *   CORS headers allow direct browser access.
  */
 export function proxyStreamUrl(cdnUrl: string): string {
-  return `${BASE}/stream?url=${encodeURIComponent(cdnUrl)}`;
+  if (
+    cdnUrl.includes("googlevideo.com") ||
+    cdnUrl.includes("youtube.com/videoplayback")
+  ) {
+    return `${BASE}/stream?url=${encodeURIComponent(cdnUrl)}`;
+  }
+  return cdnUrl;
 }
 
 export interface ImageResult {
